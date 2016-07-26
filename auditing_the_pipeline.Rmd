@@ -1,0 +1,147 @@
+---
+title: "auditing_the_pipeline"
+author: "Jabus"
+date: "July 22, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## How do you audit the objects along your analysis pipeline?
+
+Given a dataframe object and a series of piped operations, (how) can you observe the intermediate objects from each operation in the pipe? 
+
+(First, prepare analyasis environment)
+
+```{r cars, message=FALSE}
+library(dplyr) # load power packages
+library(magrittr)
+library(tidyr)
+```
+
+Here's an example pipeline:
+
+```{r df}
+iris %>%
+  mutate(Sepal.Area = Sepal.Width * Sepal.Length) %>%
+  mutate(Petal.Area = Petal.Width * Petal.Length) %>%
+  filter(Sepal.Area > mean(Sepal.Area)) %>%
+  select(-Petal.Length, -Sepal.Length) %>%
+  group_by(Species) %>%
+  summarize(n()) -> iris2
+
+print(iris2)
+```
+
+But how can you observe the intermediate objects generated along the pipe?
+
+### Line by line
+
+You can highlight and source (or copy and paste) each section of the analysis chain and observe the resulting object. This is okay for development, but is ephemoral and not very useful in research operations.
+
+### Assignment statements
+
+You can copy the intermediate objects, and observe those copied instances later,  e.g.:
+
+
+```{r tpipe}
+iris %>%
+  mutate(Sepal.Area = Sepal.Width * Sepal.Length) %>%
+  assign(x="x1",value=., pos=1) %>%
+  mutate(Petal.Area = Petal.Width * Petal.Length) %>%
+  assign(x="x2",value=., pos=1) %>%
+  filter(Sepal.Area > mean(Sepal.Area)) %>%
+  assign(x="x3",value=., pos=1) %>%
+  select(-Petal.Length, -Sepal.Length) %>%
+  assign(x="x4",value=., pos=1) %>%
+  group_by(Species) %>%
+  assign(x="x5",value=., pos=1) %>%
+  summarize(n()) -> iris2
+
+
+print(head(x1))
+
+```
+
+This works, although the alternating assignment lines feels a bit brute force, and repetitive.
+
+# Building an audit trail
+
+Here, I build on the above idea, by copying and collecting intermediate objects into an audit object. This audit object adds a (node) object with each node along the analysis pipeline.
+
+There are (so far) three functions:
+
+```{r audit}
+
+#function definitions
+
+start_audit <- function() { #initialize (reset) the node counter to zero
+  audit <- new.env()
+  audit$node <- 0
+  return(audit)
+}
+
+a_ <- function(x, f, ...) { #main functionality is captured with a_
+  audit$node <<- audit$node + 1 
+  audit[[as.character(audit$node)]] <- x
+  x %>% f(...)
+}
+
+audit_trail <- function(a, ...) {
+  if (missing(...)) {
+    node_labels <- 1:length(ls(a, pattern="[^node]")) 
+  } else {
+    node_labels <- list(...)
+  }
+  for (i in 1:length(node_labels)) {
+      print(paste0("audit trail: ", node_labels[i]))
+      print(head(a[[  as.character(node_labels[i])   ]] ))
+  }
+} 
+
+```
+
+# How you use the audit trail
+
+```{r showaudit}
+### Employ an auditing object with the pipeline
+
+start_audit() -> audit #Initialize the audit object (set node to zero)
+
+iris %>%
+  a_(mutate, Sepal.Area = Sepal.Width * Sepal.Length) %>%
+  a_(mutate, Petal.Area = Petal.Width * Petal.Length) %>%
+  a_(filter, Sepal.Area > mean(Sepal.Area)) %>%
+  a_(select, -Petal.Length, -Sepal.Length) %>%
+  a_(group_by, Species) %>%
+  a_(summarize, n() ) -> iris2
+
+```
+
+Note that the a_(...) wraps around each unit operation in the pipeline, and the first argument is the unit operation function in the pipeline.
+
+At this point, we can audit the objects generated and collected in the pipeline: 
+```{r observe}
+
+audit %>% audit_trail #reveal all objects
+
+audit %>% audit_trail(2,3)#reveal the object at the 2nd and 3rd node
+
+```
+
+nb. I've written the audit_trail function to display only the head of each object.
+
+# Next steps
+
+* Write tests for each intermediate object in the audit trail.
+
+
+
+###
+
+2016-07-26
+
+jabustyerman@gmail.com
