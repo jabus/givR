@@ -1,6 +1,9 @@
+
 # givR
 
 This is where I givR.
 
 Jabus Tyerman
-jabustyerman@gmail.com
+
+More about me here: jabustyerman.com
+
